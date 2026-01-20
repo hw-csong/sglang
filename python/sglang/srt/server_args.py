@@ -590,7 +590,7 @@ class ServerArgs:
     enable_fused_qk_norm_rope: bool = False
 
     # Context parallel used in prefill phase of Ascend
-    prefill_context_parallel_size: int = 1
+    pcp_size: int = 1
 
     # Dynamic batch tokenizer
     enable_dynamic_batch_tokenizer: bool = False
@@ -4270,7 +4270,7 @@ class ServerArgs:
             "--prefill-context-parallel-size",
             "--pcp-size",
             type=int,
-            default=ServerArgs.prefill_context_parallel_size,
+            default=ServerArgs.pcp_size,
             help="The prefill context parallelism size.",
         )
         parser.add_argument(
@@ -4604,12 +4604,19 @@ class ServerArgs:
         # Check parallel size constraints
         if not is_npu:
             assert (
-                       self.tp_size * self.pp_size
-                   ) % self.nnodes == 0, "tp_size must be divisible by number of nodes"
+                self.tp_size * self.pp_size
+            ) % self.nnodes == 0, "tp_size must be divisible by number of nodes"
         else:
+            if self.pcp_size > 1:
+                assert (
+                    self.disaggregation_mode != "decode"
+                ), "Context parallel is only supported for prefill when PD disaggregation."
+                assert (
+                    self.chunked_prefill_size is None or self.chunked_prefill_size == -1
+                ), "Context parallel is not compatible with chunk prefill."
             assert (
-                       self.tp_size * self.pp_size * self.prefill_context_parallel_size
-                   ) % self.nnodes == 0, "tp_size must be divisible by number of nodes"
+                self.tp_size * self.pp_size * self.pcp_size
+            ) % self.nnodes == 0, "tp_size must be divisible by number of nodes"
 
         if self.pp_size > 1:
             assert (
